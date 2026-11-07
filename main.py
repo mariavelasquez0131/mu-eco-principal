@@ -3,7 +3,7 @@ import sys
 from settings import WIDTH, HEIGHT, FPS, GROUND_Y
 from player import Player
 from environment import Environment
-from enemies import Enemy
+from enemies import PngEnemy
 from hud import HUD
 from sound_manager import sound_manager
 
@@ -15,19 +15,22 @@ def main():
     pygame.display.set_caption("Mundo Mario Bros Pastel - Flores y Aventura")
     clock = pygame.time.Clock()
 
-    # Iniciar música dulce de fondo estilo caja musical retro
     sound_manager.start_music()
 
-    # Módulos del juego
-    environment = Environment(GROUND_Y)
-    player = Player(450, GROUND_Y)
-    hud = HUD(WIDTH)
+    def reset_game():
+        env = Environment(GROUND_Y)
+        ply = Player(450, GROUND_Y)
+        
+        # Múltiples enemigos creados a partir de enemigo.png (sin enemigos generados por IA)
+        enemies = [
+            PngEnemy(x=220, ground_y=GROUND_Y, speed=1.9, jump_power=-10.0),
+            PngEnemy(x=780, ground_y=GROUND_Y, speed=2.3, jump_power=-11.0),
+            PngEnemy(x=1050, ground_y=GROUND_Y, speed=2.5, jump_power=-11.5),
+        ]
+        return env, ply, enemies
 
-    # Enemigos patrullando
-    enemies = [
-        Enemy(x=280, ground_y=GROUND_Y, min_x=200, max_x=500),
-        Enemy(x=780, ground_y=GROUND_Y, min_x=540, max_x=1050),
-    ]
+    environment, player, enemies = reset_game()
+    hud = HUD(WIDTH)
 
     start_time = pygame.time.get_ticks()
     running = True
@@ -43,24 +46,31 @@ def main():
                     running = False
                 elif event.key == pygame.K_m:
                     sound_manager.toggle_mute()
+                elif (event.key == pygame.K_r or event.key == pygame.K_SPACE) and player.health <= 0:
+                    environment, player, enemies = reset_game()
 
         keys = pygame.key.get_pressed()
 
-        # Actualizaciones de lógica
-        environment.update()
-        for enemy in enemies:
-            enemy.update(environment.pipes)
-
-        player.update(keys, environment.blocks, environment.pipes, environment.coins, enemies)
+        # Solo actualizar física si el jugador sigue vivo
+        if player.health > 0:
+            environment.update(player)
+            for enemy in enemies:
+                enemy.update(player, environment.pipes, environment.blocks)
+            player.update(keys, environment.blocks, environment.pipes, environment.coins, enemies)
 
         # Renderizado
         environment.draw(screen, time_sec)
         
+        # Dibujar enemigos basados en enemigo.png
         for enemy in enemies:
             enemy.draw(screen)
 
         player.draw(screen)
-        hud.draw(screen, player.coins_collected)
+        hud.draw(screen, player.coins_collected, player.health, player.max_health)
+
+        # Pantalla de "Game Over, perdiste" al llegar a 0 vidas
+        if player.health <= 0:
+            hud.draw_game_over(screen, time_sec)
 
         pygame.display.flip()
         clock.tick(FPS)

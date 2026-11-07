@@ -1,102 +1,116 @@
 import pygame
+import os
 import math
 from settings import WIDTH, GROUND_Y
 from sound_manager import sound_manager
 
-class Enemy:
-    def __init__(self, x, ground_y, min_x=0, max_x=WIDTH):
-        self.width = 44
-        self.height = 42
+class PngEnemy:
+    """Enemigo basado en sprites/enemigo.png que persigue al jugador y le quita vida"""
+    def __init__(self, x, ground_y, speed=2.2, jump_power=-10.5):
+        self.width = 54
+        self.height = 54
         self.x = x
         self.ground_y = ground_y
         self.y = ground_y - self.height
-        self.vx = -1.4
-        self.min_x = min_x
-        self.max_x = max_x
+        self.vx = 0.0
+        self.vy = 0.0
+        self.speed = speed
+        self.jump_power = jump_power
+        self.gravity = 0.6
+        self.is_grounded = True
+        self.facing_right = False
         self.alive = True
-        self.is_flattened = False
-        self.flatten_timer = 0
         self.anim_walk = 0.0
 
-    def update(self, pipes):
+        # Cargar sprite enemigo.png
+        sprite_path = os.path.join("sprites", "enemigo.png")
+        if os.path.exists(sprite_path):
+            raw_img = pygame.image.load(sprite_path).convert_alpha()
+        else:
+            raw_img = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            pygame.draw.circle(raw_img, (180, 40, 40), (self.width // 2, self.height // 2), self.width // 2)
+
+        self.sprite_right = pygame.transform.smoothscale(raw_img, (self.width, self.height))
+        self.sprite_left = pygame.transform.flip(self.sprite_right, True, False)
+
+    def update(self, player, pipes, blocks):
         if not self.alive:
             return
 
-        if self.is_flattened:
-            self.flatten_timer += 1
-            if self.flatten_timer > 35:
-                self.alive = False
-            return
+        self.anim_walk += 0.18
 
+        # 1. Inteligencia Artificial: Perseguir al jugador
+        player_cx = player.x + player.sprite_right.get_width() / 2
+        enemy_cx = self.x + self.width / 2
+
+        dx = player_cx - enemy_cx
+        dist = abs(dx)
+
+        if dist > 8:
+            if dx > 0:
+                self.vx = self.speed
+                self.facing_right = True
+            else:
+                self.vx = -self.speed
+                self.facing_right = False
+        else:
+            self.vx = 0
+
+        # Salto si el jugador está arriba o para esquivar
+        if player.y + player.sprite_right.get_height() < self.y and self.is_grounded and dist < 220:
+            self.vy = self.jump_power
+            self.is_grounded = False
+
+        # Aplicar gravedad
+        self.vy += self.gravity
+        self.y += self.vy
         self.x += self.vx
-        self.anim_walk += 0.16
 
-        if self.x <= self.min_x:
-            self.x = self.min_x
-            self.vx = abs(self.vx)
-        elif self.x + self.width >= self.max_x:
-            self.x = self.max_x - self.width
-            self.vx = -abs(self.vx)
+        # Límites del mundo
+        if self.x < 10:
+            self.x = 10
+        elif self.x > WIDTH - self.width - 10:
+            self.x = WIDTH - self.width - 10
 
-        enemy_rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        # Colisiones con tuberías
+        enemy_box = pygame.Rect(self.x, self.y, self.width, self.height)
         for p in pipes:
             pipe_box = pygame.Rect(p.x, p.y - p.lip_height, p.lip_width, p.height + p.lip_height)
-            if enemy_rect.colliderect(pipe_box):
-                if self.vx > 0:
+            if enemy_box.colliderect(pipe_box):
+                if self.is_grounded and self.y + self.height >= pipe_box.top:
+                    self.vy = -11.5
+                    self.is_grounded = False
+                elif self.vx > 0:
                     self.x = pipe_box.left - self.width
-                    self.vx = -self.vx
-                else:
+                elif self.vx < 0:
                     self.x = pipe_box.right
-                    self.vx = -self.vx
 
-    def stomp(self):
-        self.is_flattened = True
-        sound_manager.play_bump()
+        # Colisiones con bloques flotantes
+        for b in blocks:
+            if enemy_box.colliderect(b.rect):
+                if self.vy > 0 and self.y + self.height - self.vy <= b.rect.top + 8:
+                    self.y = b.rect.top - self.height
+                    self.vy = 0
+                    self.is_grounded = True
+
+        # Suelo
+        floor_level = self.ground_y - self.height
+        if self.y >= floor_level:
+            self.y = floor_level
+            self.vy = 0
+            self.is_grounded = True
 
     def draw(self, surf):
         if not self.alive:
             return
 
-        x = int(self.x)
-        y = int(self.y)
+        sprite = self.sprite_right if self.facing_right else self.sprite_left
+        bob = math.sin(self.anim_walk) * 3 if self.is_grounded and abs(self.vx) > 0 else 0
 
-        if self.is_flattened:
-            flat_h = 16
-            flat_y = self.ground_y - flat_h
-            pygame.draw.ellipse(surf, (230, 90, 130), (x - 2, flat_y, self.width + 4, flat_h))
-            # Ojos cerrados > <
-            pygame.draw.line(surf, (60, 20, 40), (x + 10, flat_y + 4), (x + 16, flat_y + 11), 2)
-            pygame.draw.line(surf, (60, 20, 40), (x + 16, flat_y + 4), (x + 10, flat_y + 11), 2)
-            pygame.draw.line(surf, (60, 20, 40), (x + 28, flat_y + 4), (x + 34, flat_y + 11), 2)
-            pygame.draw.line(surf, (60, 20, 40), (x + 34, flat_y + 4), (x + 28, flat_y + 11), 2)
-            return
+        # Sombra
+        shadow_w = int(self.width * 0.7)
+        shadow_surf = pygame.Surface((shadow_w, 6), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_surf, (0, 0, 0, 60), (0, 0, shadow_w, 6))
+        surf.blit(shadow_surf, (int(self.x + self.width / 2 - shadow_w / 2), self.ground_y - 3))
 
-        # Goomba Kawaii Pastel (Hongo caramelo rosa/frambuesa con patitas)
-        foot_tilt = math.sin(self.anim_walk) * 3
-        foot_color = (195, 70, 110)
-        pygame.draw.ellipse(surf, foot_color, (x + 3, y + self.height - 10 + foot_tilt, 16, 12))
-        pygame.draw.ellipse(surf, foot_color, (x + self.width - 19, y + self.height - 10 - foot_tilt, 16, 12))
-
-        # Cabeza hongo
-        head_color = (255, 105, 150)
-        head_dark = (220, 75, 120)
-        pygame.draw.ellipse(surf, head_dark, (x, y + 2, self.width, self.height - 6))
-        pygame.draw.ellipse(surf, head_color, (x + 1, y, self.width - 2, self.height - 8))
-
-        # Lunares blancos suaves
-        pygame.draw.circle(surf, (255, 255, 255), (x + 11, y + 9), 4)
-        pygame.draw.circle(surf, (255, 255, 255), (x + self.width - 12, y + 9), 4)
-
-        # Base / cuerpo crema
-        pygame.draw.ellipse(surf, (255, 240, 225), (x + 9, y + self.height - 20, self.width - 18, 14))
-
-        # Ojitos kawaii
-        pupil_off = 2 if self.vx > 0 else 0
-        pygame.draw.ellipse(surf, (255, 255, 255), (x + 10, y + 16, 8, 11))
-        pygame.draw.ellipse(surf, (255, 255, 255), (x + self.width - 18, y + 16, 8, 11))
-        pygame.draw.ellipse(surf, (60, 30, 50), (x + 12 + pupil_off, y + 19, 5, 7))
-        pygame.draw.ellipse(surf, (60, 30, 50), (x + self.width - 16 + pupil_off, y + 19, 5, 7))
-        
-        # Mejillas sonrojadas
-        pygame.draw.circle(surf, (255, 160, 190), (x + 7, y + 27), 4)
-        pygame.draw.circle(surf, (255, 160, 190), (x + self.width - 7, y + 27), 4)
+        surf.blit(sprite, (self.x, self.y + bob))
