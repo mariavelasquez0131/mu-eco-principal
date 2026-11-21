@@ -64,7 +64,9 @@ class SoundManager:
             self.snd_jump = generate_sound(220, 560, 0.16, "triangle", 0.22)
             self.snd_coin = generate_sound(987, 1318, 0.28, "sine", 0.32)
             self.snd_bump = generate_sound(160, 80, 0.14, "triangle", 0.25)
-            self.snd_hurt = generate_sound(280, 90, 0.22, "square", 0.35) # Sonido de daño
+            self.snd_hurt = generate_sound(280, 90, 0.22, "square", 0.35)
+            self.snd_slash = generate_sound(600, 200, 0.12, "triangle", 0.30)
+            self.snd_pipe = generate_sound(300, 150, 0.25, "sine", 0.35)
             self.bgm = generate_kawaii_bgm()
             self.bgm_channel = pygame.mixer.Channel(0)
         except Exception:
@@ -72,6 +74,8 @@ class SoundManager:
             self.snd_coin = None
             self.snd_bump = None
             self.snd_hurt = None
+            self.snd_slash = None
+            self.snd_pipe = None
             self.bgm = None
             self.bgm_channel = None
 
@@ -116,6 +120,20 @@ class SoundManager:
         if self.snd_hurt and not self.muted:
             try:
                 self.snd_hurt.play()
+            except Exception:
+                pass
+
+    def play_slash(self):
+        if self.snd_slash and not self.muted:
+            try:
+                self.snd_slash.play()
+            except Exception:
+                pass
+
+    def play_pipe(self):
+        if self.snd_pipe and not self.muted:
+            try:
+                self.snd_pipe.play()
             except Exception:
                 pass
 
